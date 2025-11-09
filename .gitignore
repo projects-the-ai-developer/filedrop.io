@@ -1,0 +1,26 @@
+# Go binaries
+/filedrop
+*.exe
+*.exe~
+
+# Log files
+*.log
+
+# Dependency directories
+/vendor/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+._*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Uploaded files
+/uploads/
+
+# Backup files
+*.bak

@@ -1,0 +1,27 @@
+# .woodpecker.yml
+pipeline:
+  build-and-push-image:
+    image: plugins/docker
+    settings:
+      # Use Codeberg's container registry
+      registry: codeberg.org
+      # Codeberg CI automatically provides these credentials
+      username: ${CI_REGISTRY_USER}
+      password: ${CI_REGISTRY_PASSWORD}
+      # The final image name will be: codeberg.org/YourUsername/your-repo:latest
+      repo: ${CI_REGISTRY}/${CI_REPO}
+      tags: latest
+    when:
+      branch: main
+
+  deploy-to-fly:
+    image: docker.io/superfly/flyctl:latest
+    # You must create a 'fly_api_token' secret in your Codeberg repo settings
+    secrets: [ fly_api_token ]
+    commands:
+      # '--remote-only' tells flyctl to use the image we just pushed to the registry
+      - flyctl deploy --remote-only
+    depends_on:
+      - build-and-push-image
+    when:
+      branch: main

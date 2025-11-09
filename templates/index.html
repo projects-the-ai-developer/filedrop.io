@@ -1,0 +1,59 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go-Shad FileDrop</title>
+    <link rel="stylesheet" href="/static/shadcn-style.css">
+</head>
+<body>
+    <main>
+        <div class="card">
+            <div class="space-y-6">
+                <div class="card-header">
+                    <h1 class="card-title">Go-Shad FileDrop</h1>
+                </div>
+
+                <div class="card-content">
+                    <form action="/upload" method="post" enctype="multipart/form-data" class="flex gap-4">
+                        <input class="input" type="file" name="file" required>
+                        <button type="submit" class="btn btn-primary">Upload</button>
+                    </form>
+                </div>
+
+                <div class="card-content">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Uploaded On</th>
+                                <th class="text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{if .}}
+                                {{range .}}
+                                <tr>
+                                    <td><a href="/files/{{.Filename}}">{{.Filename}}</a></td>
+                                    <td>{{.UploadDate.Format "Jan 02, 2006"}}</td>
+                                    <td class="text-right">
+                                        <form action="/delete/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure?');">
+                                            <button type="submit" class="btn btn-destructive">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            {{else}}
+                                <tr>
+                                    <td colspan="3" style="text-align: center; color: var(--muted-foreground);">No files uploaded yet.</td>
+                                </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
