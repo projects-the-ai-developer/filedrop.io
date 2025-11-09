@@ -114,7 +114,9 @@ main {
 .table th, .table td {
     padding: 1rem;
     border-bottom: 1px solid var(--border);
-    word-break: break-word; /* Force long text to wrap */
+}
+.table td.filename-cell {
+    word-break: break-word; /* Force long text to wrap only for filenames */
 }
 .table th {
     color: var(--muted-foreground);
@@ -139,6 +141,7 @@ a:hover { text-decoration: underline; }
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    align-items: center; /* Center the items horizontally */
 }
 
 /* --- Mobile Responsiveness --- */
@@ -176,12 +179,12 @@ a:hover { text-decoration: underline; }
         padding: 0.5rem; /* Reduce padding on mobile */
     }
 
-    .upload-form .input {
-        width: 100%; /* Ensure input takes full width on mobile */
+    .upload-form .input,
+    .upload-form .btn {
+        width: 280px; /* Set a matching width for input and button */
     }
 
-    /* Invisible outline to fix rendering bug */
-    .upload-form {
-        outline: 1px solid transparent;
+    .upload-form .input {
+        flex-grow: 0; /* Prevent input from growing */
     }
 }

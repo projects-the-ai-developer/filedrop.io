@@ -36,7 +36,7 @@
                                 {{if .}}
                                     {{range .}}
                                     <tr>
-                                        <td><a href="/files/{{.Filename}}">{{.Filename}}</a></td>
+                                        <td class="filename-cell"><a href="/files/{{.Filename}}">{{.Filename}}</a></td>
                                         <td>{{.UploadDate.Format "Jan 02, 2006"}}</td>
                                         <td class="text-right">
                                             <form action="/delete/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure?');">
