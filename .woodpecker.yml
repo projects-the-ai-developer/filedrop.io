@@ -14,13 +14,16 @@ pipeline:
     when:
       branch: main
 
-  deploy-to-fly:
-    image: docker.io/superfly/flyctl:latest
-    # You must create a 'fly_api_token' secret in your Codeberg repo settings
-    secrets: [ fly_api_token ]
+  deploy-to-railway:
+    image: railway/cli:latest
+    # You must create a 'RAILWAY_TOKEN' secret in your Codeberg repo settings
+    secrets: [ RAILWAY_TOKEN ]
     commands:
-      # '--remote-only' tells flyctl to use the image we just pushed to the registry
-      - flyctl deploy --remote-only
+      # Login to Railway CLI
+      - railway login --token ${RAILWAY_TOKEN}
+      # Trigger a deployment. Railway will automatically detect the Dockerfile.
+      # Ensure your project is linked to your Codeberg repo on Railway's dashboard first.
+      - railway up --detach
     depends_on:
       - build-and-push-image
     when:

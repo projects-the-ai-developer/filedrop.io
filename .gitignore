@@ -24,3 +24,9 @@ Thumbs.db
 
 # Backup files
 *.bak
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+.dockerignore
+

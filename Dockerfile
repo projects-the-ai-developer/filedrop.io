@@ -26,9 +26,6 @@ COPY --from=builder /filedrop /filedrop
 COPY templates /templates
 COPY static /static
 
-# Create the uploads directory where files will be stored inside the container
-RUN mkdir /uploads
-
 # Expose port 8080 to the outside world
 EXPOSE 8080
 
