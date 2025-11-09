@@ -16,41 +16,43 @@
                 </div>
 
                 <div class="card-content">
-                    <form action="/upload" method="post" enctype="multipart/form-data" class="flex gap-4">
+                    <form action="/upload" method="post" enctype="multipart/form-data" class="upload-form">
                         <input class="input" type="file" name="file" required>
                         <button type="submit" class="btn btn-primary">Upload</button>
                     </form>
                 </div>
 
                 <div class="card-content">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Filename</th>
-                                <th>Uploaded On</th>
-                                <th class="text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {{if .}}
-                                {{range .}}
+                    <div class="table-wrapper">
+                        <table class="table">
+                            <thead>
                                 <tr>
-                                    <td><a href="/files/{{.Filename}}">{{.Filename}}</a></td>
-                                    <td>{{.UploadDate.Format "Jan 02, 2006"}}</td>
-                                    <td class="text-right">
-                                        <form action="/delete/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure?');">
-                                            <button type="submit" class="btn btn-destructive">Delete</button>
-                                        </form>
-                                    </td>
+                                    <th>Filename</th>
+                                    <th>Uploaded On</th>
+                                    <th class="text-right">Action</th>
                                 </tr>
+                            </thead>
+                            <tbody>
+                                {{if .}}
+                                    {{range .}}
+                                    <tr>
+                                        <td><a href="/files/{{.Filename}}">{{.Filename}}</a></td>
+                                        <td>{{.UploadDate.Format "Jan 02, 2006"}}</td>
+                                        <td class="text-right">
+                                            <form action="/delete/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure?');">
+                                                <button type="submit" class="btn btn-destructive">Delete</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {{end}}
+                                {{else}}
+                                    <tr>
+                                        <td colspan="3" style="text-align: center; color: var(--muted-foreground);">No files uploaded yet.</td>
+                                    </tr>
                                 {{end}}
-                            {{else}}
-                                <tr>
-                                    <td colspan="3" style="text-align: center; color: var(--muted-foreground);">No files uploaded yet.</td>
-                                </tr>
-                            {{end}}
-                        </tbody>
-                    </table>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
