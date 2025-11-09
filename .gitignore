@@ -30,3 +30,4 @@ docker-compose.yml
 docker-compose.*.yml
 .dockerignore
 
+go.sum
