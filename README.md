@@ -59,7 +59,7 @@ The application follows a monolithic architecture, with all core logic contained
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://your-git-repository/go-shad-filedrop.git
+    git clone https://codeberg.org/theprivatehomelabber/filedrop.theprivatehomelabber.in.git
     cd go-shad-filedrop
     ```
 
