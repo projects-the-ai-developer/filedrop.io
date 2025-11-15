@@ -1,31 +1,28 @@
 # .woodpecker.yml
 
-name: Test and Deploy to Render
+name: Test and Deploy Pipeline
 on:
   push:
     branches:
-      - main # Intha pipeline 'main' branch-la push panna mattum run aagum.
+      - main
 
 steps:
-  # STEP 1: TEST THE CODE
-  # Unga code-la irukura tests-ah run pannum.
-  # Ithu fail aana, pipeline ingaye nindrum, deploy aagathu.
+  # STEP 1: RUN TESTS
   test:
-    image: docker.io/library/golang:1.21
+    # Intha line-ah maathirukom: 1.21 -> 1.22.0
+    image: docker.io/library/golang:1.25.0
     commands:
-      - echo "🧪 Running Go tests..."
+      - echo "🧪 Running Go application tests using Go 1.22.0..."
       - go mod tidy
       - go test -v ./...
 
   # STEP 2: DEPLOY TO RENDER
-  # Muthal step ('test') pass aana mattum than intha step run aagum.
   deploy:
     image: docker.io/curlimages/curl
-    secrets: [ RENDER_DEPLOY_HOOK ] # Codeberg secret-ah inga use panrom.
+    secrets: [ RENDER_DEPLOY_HOOK ]
     commands:
-      - echo "✅ Tests passed!"
+      - echo "✅ All tests passed successfully."
       - echo "🚀 Triggering a new deployment on Render..."
-      - curl -X POST "$RENDER_DEPLOY_HOOK" # Render-oda deploy hook-ah call pannuthu.
+      - curl -X POST "$RENDER_DEPLOY_HOOK"
     when:
-      status:
-        - success # Previous steps success aana mattum than ithu nadakum.
+      status: [ success ]
