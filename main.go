@@ -13,7 +13,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -34,7 +33,7 @@ var fileCollection *mongo.Collection
 var ctx = context.TODO()
 var encryptionKey []byte
 
-// These will be loaded from .env locally or from Railway's variables in production.
+// These will be loaded from .env locally or from the host environment in production.
 var mongoURI = os.Getenv("MONGODB_URI")
 var dbName = os.Getenv("DB_NAME")
 var collName = os.Getenv("COLLECTION_NAME")
@@ -90,6 +89,27 @@ func decrypt(data []byte, key []byte) ([]byte, error) {
 
 // --- END CRYPTO HELPERS ---
 
+// --- MIDDLEWARE ---
+
+// forceHTTPS is a middleware that redirects HTTP requests to HTTPS.
+// It is "proxy-aware" and respects the 'X-Forwarded-Proto' header set by services like Render.
+func forceHTTPS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The 'X-Forwarded-Proto' header is set by the proxy.
+		// We only redirect if we are in a production environment (indicated by PORT env var)
+		// and the original request was 'http'.
+		isProd := os.Getenv("PORT") != ""
+		if isProd && r.Header.Get("X-Forwarded-Proto") == "http" {
+			targetURL := "https://" + r.Host + r.URL.RequestURI()
+			http.Redirect(w, r, targetURL, http.StatusPermanentRedirect)
+			return
+		}
+
+		// If it was already HTTPS or we're in local dev, serve the request.
+		next.ServeHTTP(w, r)
+	})
+}
+
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
@@ -106,6 +126,9 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
+// --- END MIDDLEWARE ---
+
+// --- HANDLERS ---
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	var results []FileDocument
 	opts := options.Find().SetProjection(bson.M{"filename": 1, "uploadDate": 1, "_id": 0}).SetSort(bson.D{{"uploadDate", -1}})
@@ -277,6 +300,8 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// --- END HANDLERS ---
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, relying on host environment variables.")
@@ -314,7 +339,7 @@ func main() {
 		log.Fatalf("Could not ping MongoDB: %v", err)
 	}
 	fileCollection = client.Database(dbName).Collection(collName)
-	fmt.Println("Successfully connected to MongoDB Atlas!")
+	log.Println("Successfully connected to MongoDB Atlas!")
 
 	tpl = template.Must(template.ParseGlob("templates/*.html"))
 
@@ -331,6 +356,10 @@ func main() {
 		port = "8080"
 	}
 
-	fmt.Printf("Server starting on http://localhost:%s\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	// Create a handler that wraps the default mux with our HTTPS redirect middleware.
+	handler := forceHTTPS(http.DefaultServeMux)
+
+	log.Printf("Server starting on http://localhost:%s\n", port)
+	// Use the new wrapped handler instead of nil.
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
