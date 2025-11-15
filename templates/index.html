@@ -52,7 +52,13 @@
                                         </td>
                                         <td data-label="Uploaded On">{{.UploadDate.Format "Jan 02, 2006"}}</td>
                                         <td data-label="Action" class="text-right actions-cell">
-                                            <button class="btn btn-secondary" onclick="toggleShareForm('{{.Filename}}')">Share</button>
+                                            {{if .ShareToken}}
+                                                <form action="/unshare/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure you want to remove the share link?');" style="display: inline;">
+                                                    <button type="submit" class="btn btn-secondary">Unshare</button>
+                                                </form>
+                                            {{else}}
+                                                <button class="btn btn-secondary" onclick="toggleShareForm('{{.Filename}}')">Share</button>
+                                            {{end}}
                                             <form action="/delete/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure?');" style="display: inline;">
                                                 <button type="submit" class="btn btn-destructive">Delete</button>
                                             </form>
