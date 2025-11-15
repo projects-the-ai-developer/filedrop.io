@@ -1,4 +1,4 @@
-// main.go - FINAL CORRECTED VERSION
+// main.go - Enhanced with Shareable Links
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"html/template"
 	"io"
@@ -19,12 +20,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var tpl *template.Template
@@ -34,13 +37,32 @@ var encryptionKey []byte
 var mongoURI, dbName, collName, user, pass, encryptionKeyHex string
 
 type FileDocument struct {
-	Filename    string    `bson:"filename"`
-	ContentType string    `bson:"contentType"`
-	UploadDate  time.Time `bson:"uploadDate"`
-	Data        string    `bson:"data"`
-	Hash        string    `bson:"hash,omitempty"`
-	Compression string    `bson:"compression,omitempty"`
-	Encryption  string    `bson:"encryption,omitempty"`
+	Filename          string    `bson:"filename"`
+	ContentType       string    `bson:"contentType"`
+	UploadDate        time.Time `bson:"uploadDate"`
+	Data              string    `bson:"data"`
+	Hash              string    `bson:"hash,omitempty"`
+	Compression       string    `bson:"compression,omitempty"`
+	Encryption        string    `bson:"encryption,omitempty"`
+	ShareToken        string    `bson:"shareToken,omitempty"`
+	SharePassword     string    `bson:"sharePassword,omitempty"`
+	ShareExpiry       time.Time `bson:"shareExpiry,omitempty"`
+	ShareDownloads    int       `bson:"shareDownloads,omitempty"`
+	ShareMaxDownloads int       `bson:"shareMaxDownloads,omitempty"`
+}
+
+type ShareSettings struct {
+	Password      string `json:"password"`
+	ExpiryDays    int    `json:"expiry_days"`
+	MaxDownloads  int    `json:"max_downloads"`
+}
+
+func generateToken() (string, error) {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 func encrypt(data []byte, key []byte) ([]byte, error) {
@@ -81,7 +103,6 @@ func forceHTTPS(next http.Handler) http.Handler {
 		isProd := os.Getenv("RENDER") == "true"
 		if isProd && r.Header.Get("X-Forwarded-Proto") == "http" {
 			targetURL := "https://" + r.Host + r.URL.RequestURI()
-			// Use a TEMPORARY redirect to prevent aggressive browser caching
 			http.Redirect(w, r, targetURL, http.StatusTemporaryRedirect)
 			return
 		}
@@ -105,7 +126,7 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	var results []FileDocument
-	opts := options.Find().SetProjection(bson.M{"filename": 1, "uploadDate": 1, "_id": 0}).SetSort(bson.D{{"uploadDate", -1}})
+	opts := options.Find().SetProjection(bson.M{"filename": 1, "uploadDate": 1, "shareToken": 1, "_id": 0}).SetSort(bson.D{{"uploadDate", -1}})
 	cursor, err := fileCollection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		http.Error(w, "Could not fetch file list", http.StatusInternalServerError)
@@ -182,6 +203,10 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	serveFile(w, &result)
+}
+
+func serveFile(w http.ResponseWriter, result *FileDocument) {
 	decodedData, err := base64.StdEncoding.DecodeString(result.Data)
 	if err != nil {
 		http.Error(w, "Could not decode file data", http.StatusInternalServerError)
@@ -220,13 +245,13 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		hash := sha256.Sum256(finalData)
 		hashString := "sha256:" + hex.EncodeToString(hash[:])
 		if subtle.ConstantTimeCompare([]byte(hashString), []byte(result.Hash)) != 1 {
-			log.Printf("Integrity check failed for file: %s", filename)
+			log.Printf("Integrity check failed for file: %s", result.Filename)
 			http.Error(w, "File is corrupt", http.StatusInternalServerError)
 			return
 		}
 	}
 	w.Header().Set("Content-Type", result.ContentType)
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+result.Filename+"\"")
 	w.Write(finalData)
 }
 
@@ -240,6 +265,115 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error deleting document: %v", err)
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func shareHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	filename := strings.TrimPrefix(r.URL.Path, "/share/")
+	var settings ShareSettings
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	token, err := generateToken()
+	if err != nil {
+		http.Error(w, "Could not generate share token", http.StatusInternalServerError)
+		return
+	}
+
+	var passwordHash string
+	if settings.Password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(settings.Password), bcrypt.DefaultCost)
+		if err != nil {
+			http.Error(w, "Could not hash password", http.StatusInternalServerError)
+			return
+		}
+		passwordHash = string(hash)
+	}
+
+	var expiry time.Time
+	if settings.ExpiryDays > 0 {
+		expiry = time.Now().AddDate(0, 0, settings.ExpiryDays)
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"shareToken":        token,
+			"sharePassword":     passwordHash,
+			"shareExpiry":       expiry,
+			"shareMaxDownloads": settings.MaxDownloads,
+			"shareDownloads":    0,
+		},
+	}
+
+	res, err := fileCollection.UpdateOne(ctx, bson.M{"filename": filename}, update)
+	if err != nil {
+		http.Error(w, "Could not update file share settings", http.StatusInternalServerError)
+		return
+	}
+	if res.MatchedCount == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	scheme := "http"
+	if os.Getenv("RENDER") == "true" {
+		scheme = "https"
+	}
+	shareLink := scheme + "://" + r.Host + "/s/" + token
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"shareLink": shareLink})
+}
+
+func serveSharedFileHandler(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.URL.Path, "/s/")
+	var result FileDocument
+	err := fileCollection.FindOne(ctx, bson.M{"shareToken": token}).Decode(&result)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Could not retrieve file", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if !result.ShareExpiry.IsZero() && time.Now().After(result.ShareExpiry) {
+		http.Error(w, "Link has expired", http.StatusGone)
+		return
+	}
+
+	if result.ShareMaxDownloads > 0 && result.ShareDownloads >= result.ShareMaxDownloads {
+		http.Error(w, "Download limit reached", http.StatusGone)
+		return
+	}
+
+	if result.SharePassword != "" {
+		if r.Method == "POST" {
+			password := r.FormValue("password")
+			if err := bcrypt.CompareHashAndPassword([]byte(result.SharePassword), []byte(password)); err != nil {
+				tpl.ExecuteTemplate(w, "password.html", map[string]interface{}{"Token": token, "Error": "Invalid password"})
+				return
+			}
+		} else {
+			tpl.ExecuteTemplate(w, "password.html", map[string]interface{}{"Token": token})
+			return
+		}
+	}
+
+	// Increment download count
+	_, err = fileCollection.UpdateOne(ctx, bson.M{"shareToken": token}, bson.M{"$inc": bson.M{"shareDownloads": 1}})
+    if err != nil {
+        log.Printf("Failed to increment download count for token %s: %v", token, err)
+        // Decide if you should still serve the file. For now, we will.
+    }
+
+	serveFile(w, &result)
 }
 
 func main() {
@@ -275,10 +409,14 @@ func main() {
 	tpl = template.Must(template.ParseGlob("templates/*.html"))
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	
 	mux.HandleFunc("/files/", basicAuth(downloadHandler))
 	mux.HandleFunc("/", basicAuth(indexHandler))
 	mux.HandleFunc("/upload", basicAuth(uploadHandler))
 	mux.HandleFunc("/delete/", basicAuth(deleteHandler))
+	mux.HandleFunc("/share/", basicAuth(shareHandler))
+	mux.HandleFunc("/s/", serveSharedFileHandler)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

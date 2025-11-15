@@ -10,6 +10,10 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
     <link rel="manifest" href="/static/site.webmanifest">
     <link rel="stylesheet" href="/static/shadcn-style.css">
+    <style>
+        .share-form-row { display: none; }
+        .share-link-container { margin-top: 10px; }
+    </style>
 </head>
 <body>
     <main>
@@ -40,12 +44,33 @@
                                 {{if .}}
                                     {{range .}}
                                     <tr>
-                                        <td class="filename-cell"><a href="/files/{{.Filename}}">{{.Filename}}</a></td>
-                                        <td>{{.UploadDate.Format "Jan 02, 2006"}}</td>
-                                        <td class="text-right">
-                                            <form action="/delete/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure?');">
+                                        <td data-label="Filename" class="filename-cell">
+                                            <a href="/files/{{.Filename}}">{{.Filename}}</a>
+                                            {{if .ShareToken}}
+                                                <br><small>Share link: <a href="/s/{{.ShareToken}}" target="_blank">/s/{{.ShareToken}}</a></small>
+                                            {{end}}
+                                        </td>
+                                        <td data-label="Uploaded On">{{.UploadDate.Format "Jan 02, 2006"}}</td>
+                                        <td data-label="Action" class="text-right actions-cell">
+                                            <button class="btn btn-secondary" onclick="toggleShareForm('{{.Filename}}')">Share</button>
+                                            <form action="/delete/{{.Filename}}" method="post" onsubmit="return confirm('Are you sure?');" style="display: inline;">
                                                 <button type="submit" class="btn btn-destructive">Delete</button>
                                             </form>
+                                        </td>
+                                    </tr>
+                                    <tr id="share-form-{{.Filename}}" class="share-form-row">
+                                        <td colspan="3">
+                                            <form onsubmit="handleShare(event, '{{.Filename}}')">
+                                                <div class="share-form-inputs">
+                                                    <input type="password" name="password" placeholder="Password (optional)" class="input">
+                                                    <input type="number" name="expiry_days" placeholder="Expiry Days (optional)" class="input" min="0">
+                                                    <input type="number" name="max_downloads" placeholder="Max Downloads (optional)" class="input" min="0">
+                                                </div>
+                                                <div class="text-right mt-2" style="margin-top: 1rem;">
+                                                    <button type="submit" class="btn btn-primary">Create Link</button>
+                                                </div>
+                                            </form>
+                                            <div id="share-link-container-{{.Filename}}" class="share-link-container"></div>
                                         </td>
                                     </tr>
                                     {{end}}
@@ -61,5 +86,43 @@
             </div>
         </div>
     </main>
+    <script>
+        function toggleShareForm(filename) {
+            const formRow = document.getElementById('share-form-' + filename);
+            if (formRow.style.display === 'table-row' || formRow.style.display === 'block') {
+                formRow.style.display = 'none';
+            } else {
+                // On mobile, tr is display: block, on desktop it's table-row
+                const displayStyle = window.innerWidth < 640 ? 'block' : 'table-row';
+                formRow.style.display = displayStyle;
+            }
+        }
+
+        async function handleShare(event, filename) {
+            event.preventDefault();
+            const form = event.target;
+            const password = form.elements.password.value;
+            const expiry_days = parseInt(form.elements.expiry_days.value, 10) || 0;
+            const max_downloads = parseInt(form.elements.max_downloads.value, 10) || 0;
+
+            const response = await fetch('/share/' + filename, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password, expiry_days, max_downloads })
+            });
+
+            const resultContainer = document.getElementById('share-link-container-' + filename);
+            if (response.ok) {
+                const result = await response.json();
+                resultContainer.innerHTML = `<p>Share link created: <a href="${result.shareLink}" target="_blank">${result.shareLink}</a></p><p>Reloading page...</p>`;
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                const errorText = await response.text();
+                resultContainer.innerHTML = `<p style="color: red;">Error: ${errorText}</p>`;
+            }
+        }
+    </script>
 </body>
 </html>

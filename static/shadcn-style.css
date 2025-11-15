@@ -75,30 +75,34 @@ main {
     background-color: var(--destructive);
     color: var(--destructive-foreground);
 }
+.btn-secondary {
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+}
 
 .input {
     height: 2.5rem;
-    flex-grow: 1; /* Take available space in flex container */
+    width: 100%;
     border-radius: var(--radius);
     border: 1px solid var(--input);
     background-color: transparent;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     color: var(--foreground);
+    box-sizing: border-box;
 }
 
-/* Style the file input button */
 .input[type="file"]::file-selector-button {
     background-color: var(--primary);
     color: var(--primary-foreground);
     border: none;
-    border-radius: calc(var(--radius) - 1px); /* Slightly smaller to fit inside input border-radius */
+    border-radius: calc(var(--radius) - 1px);
     padding: 0.5rem 1rem;
     margin-right: 0.75rem;
     cursor: pointer;
     transition: opacity 0.2s;
-    height: 100%; /* Make button fill height */
-    -webkit-appearance: none; /* Remove default button styles for consistency */
+    height: 100%;
+    -webkit-appearance: none;
     appearance: none;
 }
 
@@ -116,7 +120,7 @@ main {
     border-bottom: 1px solid var(--border);
 }
 .table td.filename-cell {
-    word-break: break-word; /* Force long text to wrap only for filenames */
+    word-break: break-word;
 }
 .table th {
     color: var(--muted-foreground);
@@ -131,60 +135,83 @@ a {
 a:hover { text-decoration: underline; }
 
 .space-y-6 > * + * { margin-top: 1.5rem; }
-.flex { display: flex; }
-.gap-4 { gap: 1rem; }
 
-/* --- Form Styles --- */
-
-/* Mobile-first: form stacks vertically by default */
 .upload-form {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    align-items: center; /* Center the items horizontally */
 }
 
-/* --- Mobile Responsiveness --- */
+.share-form-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
 
-/* Add horizontal scroll to table on small screens */
 .table-wrapper {
     overflow-x: auto;
 }
 
 @media (min-width: 640px) {
-    /* Desktop: form is side-by-side */
     .upload-form {
+        flex-direction: row;
+    }
+    .upload-form .input {
+        flex-grow: 1;
+    }
+    .share-form-inputs {
         flex-direction: row;
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 639px) {
     body {
-        padding-top: 2rem;
+        padding-top: 1rem;
     }
-
     main {
         padding: 0.5rem;
     }
-
     .card {
         padding: 1rem;
+        border: none;
     }
-
-    .card-content {
-        max-width: 100%; /* Prevent content from overflowing card */
+    .table thead {
+        display: none;
     }
-
-    .table th, .table td {
-        padding: 0.5rem; /* Reduce padding on mobile */
+    .table, .table tbody, .table tr, .table td {
+        display: block;
+        width: 100%;
     }
-
-    .upload-form .input,
-    .upload-form .btn {
-        width: 280px; /* Set a matching width for input and button */
+    .table tr {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        margin-bottom: 1rem;
     }
-
-    .upload-form .input {
-        flex-grow: 0; /* Prevent input from growing */
+    .table td {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+        text-align: right;
+    }
+    .table td:last-child {
+        border-bottom: none;
+    }
+    .table td::before {
+        content: attr(data-label);
+        font-weight: 500;
+        text-align: left;
+        color: var(--muted-foreground);
+        margin-right: 1rem;
+    }
+    .table td.filename-cell a {
+        word-break: break-all;
+    }
+    .table td.actions-cell {
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+    .table td.actions-cell::before {
+        display: none;
     }
 }
