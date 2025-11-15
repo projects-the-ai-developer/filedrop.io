@@ -267,6 +267,29 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+func unshareHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	filename := strings.TrimPrefix(r.URL.Path, "/unshare/")
+	update := bson.M{
+		"$unset": bson.M{
+			"shareToken":        "",
+			"sharePassword":     "",
+			"shareExpiry":       "",
+			"shareMaxDownloads": "",
+			"shareDownloads":    "",
+		},
+	}
+	_, err := fileCollection.UpdateOne(ctx, bson.M{"filename": filename}, update)
+	if err != nil {
+		http.Error(w, "Could not unshare file", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
 func shareHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -414,6 +437,7 @@ func main() {
 	mux.HandleFunc("/", basicAuth(indexHandler))
 	mux.HandleFunc("/upload", basicAuth(uploadHandler))
 	mux.HandleFunc("/delete/", basicAuth(deleteHandler))
+	mux.HandleFunc("/unshare/", basicAuth(unshareHandler))
 	mux.HandleFunc("/share/", basicAuth(shareHandler))
 	mux.HandleFunc("/s/", serveSharedFileHandler)
 
