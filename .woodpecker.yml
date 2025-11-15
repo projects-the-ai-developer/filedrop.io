@@ -1,30 +1,31 @@
 # .woodpecker.yml
-pipeline:
-  build-and-push-image:
-    image: plugins/docker
-    settings:
-      # Use Codeberg's container registry
-      registry: codeberg.orgq
-      # Codeberg CI automatically provides these credentials
-      username: ${CI_REGISTRY_USER}
-      password: ${CI_REGISTRY_PASSWORD}
-      # The final image name will be: codeberg.org/YourUsername/your-repo:latest
-      repo: ${CI_REGISTRY}/${CI_REPO}
-      tags: latest
-    when:
-      branch: main
 
-  deploy-to-railway:
-    image: railway/cli:latest
-    # You must create a 'RAILWAY_TOKEN' secret in your Codeberg repo settings
-    secrets: [ RAILWAY_TOKEN ]
+name: Test and Deploy to Render
+on:
+  push:
+    branches:
+      - main # Intha pipeline 'main' branch-la push panna mattum run aagum.
+
+steps:
+  # STEP 1: TEST THE CODE
+  # Unga code-la irukura tests-ah run pannum.
+  # Ithu fail aana, pipeline ingaye nindrum, deploy aagathu.
+  test:
+    image: docker.io/library/golang:1.21
     commands:
-      # Login to Railway CLI
-      - railway login --token ${RAILWAY_TOKEN}
-      # Trigger a deployment. Railway will automatically detect the Dockerfile.
-      # Ensure your project is linked to your Codeberg repo on Railway's dashboard first.
-      - railway up --detach
-    depends_on:
-      - build-and-push-image
+      - echo "🧪 Running Go tests..."
+      - go mod tidy
+      - go test -v ./...
+
+  # STEP 2: DEPLOY TO RENDER
+  # Muthal step ('test') pass aana mattum than intha step run aagum.
+  deploy:
+    image: docker.io/curlimages/curl
+    secrets: [ RENDER_DEPLOY_HOOK ] # Codeberg secret-ah inga use panrom.
+    commands:
+      - echo "✅ Tests passed!"
+      - echo "🚀 Triggering a new deployment on Render..."
+      - curl -X POST "$RENDER_DEPLOY_HOOK" # Render-oda deploy hook-ah call pannuthu.
     when:
-      branch: main
+      status:
+        - success # Previous steps success aana mattum than ithu nadakum.
