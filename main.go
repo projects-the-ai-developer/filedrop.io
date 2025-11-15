@@ -95,17 +95,12 @@ func decrypt(data []byte, key []byte) ([]byte, error) {
 // It is "proxy-aware" and respects the 'X-Forwarded-Proto' header set by services like Render.
 func forceHTTPS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The 'X-Forwarded-Proto' header is set by the proxy.
-		// We only redirect if we are in a production environment (indicated by PORT env var)
-		// and the original request was 'http'.
-		isProd := os.Getenv("PORT") != ""
+		isProd := os.Getenv("RENDER") == "true" // Use Render's specific env var
 		if isProd && r.Header.Get("X-Forwarded-Proto") == "http" {
 			targetURL := "https://" + r.Host + r.URL.RequestURI()
 			http.Redirect(w, r, targetURL, http.StatusPermanentRedirect)
 			return
 		}
-
-		// If it was already HTTPS or we're in local dev, serve the request.
 		next.ServeHTTP(w, r)
 	})
 }
@@ -158,19 +153,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-
-	// 1. Read original file
 	originalBytes, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(w, "Could not read file content", http.StatusInternalServerError)
 		return
 	}
-
-	// 2. Hash original data
 	hash := sha256.Sum256(originalBytes)
 	hashString := hex.EncodeToString(hash[:])
-
-	// 3. Compress data
 	var compressedBuf bytes.Buffer
 	gzipWriter := gzip.NewWriter(&compressedBuf)
 	if _, err := gzipWriter.Write(originalBytes); err != nil {
@@ -182,20 +171,14 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	compressedBytes := compressedBuf.Bytes()
-
-	// 4. Encrypt compressed data
 	encryptedBytes, err := encrypt(compressedBytes, encryptionKey)
 	if err != nil {
 		log.Printf("Encryption error: %v", err)
 		http.Error(w, "Could not secure file", http.StatusInternalServerError)
 		return
 	}
-
-	// 5. Base64 encode for storage
 	encodedData := base64.StdEncoding.EncodeToString(encryptedBytes)
 	filename := filepath.Base(header.Filename)
-
-	// 6. Create new FileDocument with all metadata
 	newFile := FileDocument{
 		Filename:    filename,
 		ContentType: http.DetectContentType(originalBytes),
@@ -205,8 +188,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		Compression: "gzip",
 		Encryption:  "aes-gcm",
 	}
-
-	// 7. Insert into DB
 	_, err = fileCollection.InsertOne(ctx, newFile)
 	if err != nil {
 		log.Printf("Error inserting document: %v", err)
@@ -228,15 +209,11 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not retrieve file", http.StatusInternalServerError)
 		return
 	}
-
-	// 1. Base64 decode
 	decodedData, err := base64.StdEncoding.DecodeString(result.Data)
 	if err != nil {
 		http.Error(w, "Could not decode file data", http.StatusInternalServerError)
 		return
 	}
-
-	// 2. Decrypt if needed
 	var processedData []byte
 	if result.Encryption == "aes-gcm" {
 		decryptedData, err := decrypt(decodedData, encryptionKey)
@@ -247,10 +224,8 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		processedData = decryptedData
 	} else {
-		processedData = decodedData // Old, unencrypted file
+		processedData = decodedData
 	}
-
-	// 3. Decompress if needed
 	var finalData []byte
 	if result.Compression == "gzip" {
 		gzipReader, err := gzip.NewReader(bytes.NewReader(processedData))
@@ -259,7 +234,6 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer gzipReader.Close()
-
 		uncompressedData, err := io.ReadAll(gzipReader)
 		if err != nil {
 			http.Error(w, "Could not decompress file", http.StatusInternalServerError)
@@ -267,10 +241,8 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		finalData = uncompressedData
 	} else {
-		finalData = processedData // Old, uncompressed file
+		finalData = processedData
 	}
-
-	// 4. Verify hash if it exists
 	if result.Hash != "" {
 		hash := sha256.Sum256(finalData)
 		hashString := "sha256:" + hex.EncodeToString(hash[:])
@@ -280,8 +252,6 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	// 5. Serve file
 	w.Header().Set("Content-Type", result.ContentType)
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 	w.Write(finalData)
@@ -307,7 +277,6 @@ func main() {
 		log.Println("No .env file found, relying on host environment variables.")
 	}
 
-	// Re-fetch variables after godotenv.Load()
 	mongoURI = os.Getenv("MONGODB_URI")
 	dbName = os.Getenv("DB_NAME")
 	collName = os.Getenv("COLLECTION_NAME")
@@ -315,7 +284,6 @@ func main() {
 	pass = os.Getenv("APP_PASS")
 	encryptionKeyHex = os.Getenv("ENCRYPTION_KEY")
 
-	// Validate and decode encryption key
 	if encryptionKeyHex == "" {
 		log.Fatal("ENCRYPTION_KEY environment variable not set.")
 	}
@@ -328,7 +296,6 @@ func main() {
 	}
 	encryptionKey = key
 
-	// --- Initialize MongoDB Connection ---
 	clientOptions := options.Client().ApplyURI(mongoURI)
 	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
@@ -343,23 +310,26 @@ func main() {
 
 	tpl = template.Must(template.ParseGlob("templates/*.html"))
 
-	staticFileServer := http.FileServer(http.Dir("static"))
-	http.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
+	// **CHANGE**: Create an explicit router (mux)
+	mux := http.NewServeMux()
 
-	http.HandleFunc("/files/", basicAuth(downloadHandler))
-	http.HandleFunc("/", basicAuth(indexHandler))
-	http.HandleFunc("/upload", basicAuth(uploadHandler))
-	http.HandleFunc("/delete/", basicAuth(deleteHandler))
+	staticFileServer := http.FileServer(http.Dir("static"))
+	// **CHANGE**: Register handlers on the new mux, not the global http
+	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
+	mux.HandleFunc("/files/", basicAuth(downloadHandler))
+	mux.HandleFunc("/", basicAuth(indexHandler))
+	mux.HandleFunc("/upload", basicAuth(uploadHandler))
+	mux.HandleFunc("/delete/", basicAuth(deleteHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// Create a handler that wraps the default mux with our HTTPS redirect middleware.
-	handler := forceHTTPS(http.DefaultServeMux)
+	// **CHANGE**: Wrap the new mux with the middleware
+	handler := forceHTTPS(mux)
 
 	log.Printf("Server starting on http://localhost:%s\n", port)
-	// Use the new wrapped handler instead of nil.
+	// **CHANGE**: Use the final wrapped handler
 	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
