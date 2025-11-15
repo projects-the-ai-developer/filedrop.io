@@ -148,6 +148,10 @@ input[type=number] {
 .table td.filename-cell {
     word-break: break-word;
 }
+.table td.filename-cell a {
+    display: inline-block;
+    margin-bottom: 0.5rem;
+}
 .table th {
     color: var(--muted-foreground);
     font-weight: 500;
@@ -175,10 +179,17 @@ a:hover { text-decoration: underline; }
 }
 
 .share-link-display {
-    font-size: 0.8rem;
-    line-height: 1;
-    margin-top: 0.5rem;
-    color: var(--muted-foreground);
+    font-size: 0.8rem !important;
+    line-height: 1.2 !important;
+    margin-top: 0.75rem !important;
+    padding-top: 0.75rem !important;
+    color: var(--muted-foreground) !important;
+    border-top: 1px solid var(--border) !important;
+}
+
+.share-form-actions {
+    text-align: center; /* Changed from right to center */
+    margin-top: 1rem;
 }
 
 .table-wrapper {
@@ -253,9 +264,16 @@ a:hover { text-decoration: underline; }
     .table td.filename-cell {
         align-items: flex-start;
         flex-direction: column;
+        justify-content: flex-start;
+        text-align: left;
     }
     .table td.filename-cell a {
         font-size: 0.9rem;
+        text-align: left;
+    }
+    .share-link-display {
+        text-align: left;
+        width: 100%;
     }
     .table td.filename-cell::before {
         display: none;
@@ -283,8 +301,16 @@ a:hover { text-decoration: underline; }
     .share-form-inputs {
         flex-direction: column;
         gap: 1rem;
+        align-items: center; /* Center the inputs */
     }
     .share-form-inputs .input {
         width: 100%;
+        text-align: center; /* Center placeholder text */
+    }
+    .share-form-inputs .input::placeholder {
+        text-align: center; /* Center placeholder text for browsers that support it */
+    }
+    .share-form-actions {
+        text-align: center;
     }
 }
