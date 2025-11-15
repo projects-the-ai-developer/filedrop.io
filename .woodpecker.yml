@@ -1,28 +1,26 @@
-# .woodpecker.yml
-
-name: Test and Deploy Pipeline
-on:
-  push:
-    branches:
-      - main
+when:
+  branch: main
+  event: push
 
 steps:
   # STEP 1: RUN TESTS
   test:
-    # Intha line-ah maathirukom: 1.21 -> 1.22.0
     image: docker.io/library/golang:1.25.0
     commands:
-      - echo "🧪 Running Go application tests using Go 1.22.0..."
+      - echo "🧪 Running Go application tests using Go 1.25.0..."
       - go mod tidy
       - go test -v ./...
 
   # STEP 2: DEPLOY TO RENDER
   deploy:
     image: docker.io/curlimages/curl
-    secrets: [ RENDER_DEPLOY_HOOK ]
+    environment:
+      RENDER_DEPLOY_HOOK:
+        from_secret: RENDER_DEPLOY_HOOK
     commands:
       - echo "✅ All tests passed successfully."
       - echo "🚀 Triggering a new deployment on Render..."
       - curl -X POST "$RENDER_DEPLOY_HOOK"
+    # 'when' block-ah innum theliva ezhuthi irukom.
     when:
-      status: [ success ]
+      - status: [ success ]
