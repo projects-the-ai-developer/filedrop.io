@@ -1,0 +1,32 @@
+<!-- templates/login.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - PrinceTheProgrammer's FileDrop</title>
+    <link rel="stylesheet" href="/static/shadcn-style.css">
+</head>
+<body>
+    <main style="max-width: 400px;">
+        <div class="card">
+            <div class="card-header" style="text-align: center;">
+                <h1 class="card-title">FileDrop</h1>
+                <p style="color: var(--muted-foreground); margin-top: 0.5rem;">Enter your credentials to access your files.</p>
+            </div>
+            <div class="card-content">
+                <form action="/login" method="post">
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <input class="input" type="text" name="username" placeholder="Username" required>
+                        <input class="input" type="password" name="password" placeholder="Password" required>
+                        {{if .Error}}
+                        <p style="color: var(--destructive); font-size: 0.875rem; text-align: center;">{{.Error}}</p>
+                        {{end}}
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

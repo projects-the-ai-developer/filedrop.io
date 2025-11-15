@@ -1,4 +1,4 @@
-// main.go - Enhanced with Shareable Links
+// main.go - Enhanced with Sexy Login
 package main
 
 import (
@@ -9,7 +9,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -32,9 +32,10 @@ import (
 
 var tpl *template.Template
 var fileCollection *mongo.Collection
+var store *sessions.CookieStore
 var ctx = context.TODO()
 var encryptionKey []byte
-var mongoURI, dbName, collName, user, pass, encryptionKeyHex string
+var mongoURI, dbName, collName, user, pass, encryptionKeyHex, sessionKey string
 
 type FileDocument struct {
 	Filename          string    `bson:"filename"`
@@ -110,18 +111,58 @@ func forceHTTPS(next http.Handler) http.Handler {
 	})
 }
 
-func basicAuth(next http.HandlerFunc) http.HandlerFunc {
+func sessionAuth(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		username, password, ok := r.BasicAuth()
-		if ok {
-			if subtle.ConstantTimeCompare([]byte(username), []byte(user)) == 1 && subtle.ConstantTimeCompare([]byte(password), []byte(pass)) == 1 {
-				next.ServeHTTP(w, r)
-				return
-			}
+		session, _ := store.Get(r, "filedrop-session")
+		auth, ok := session.Values["authenticated"].(bool)
+		if !ok || !auth {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
 		}
-		w.Header().Set("WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+
+		lastActivity, ok := session.Values["last_activity"].(int64)
+		if !ok || time.Now().Unix()-lastActivity > 600 { // 10 minutes
+			session.Values["authenticated"] = false
+			session.Save(r, w)
+			http.Redirect(w, r, "/login?error=Session+expired", http.StatusFound)
+			return
+		}
+
+		session.Values["last_activity"] = time.Now().Unix()
+		session.Save(r, w)
+		next.ServeHTTP(w, r)
 	})
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "filedrop-session")
+
+	if r.Method == "POST" {
+		r.ParseForm()
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+
+		if username == user && password == pass {
+			session.Values["authenticated"] = true
+			session.Values["last_activity"] = time.Now().Unix()
+			session.Save(r, w)
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+
+		tpl.ExecuteTemplate(w, "login.html", map[string]string{"Error": "Invalid username or password"})
+		return
+	}
+
+	tpl.ExecuteTemplate(w, "login.html", map[string]string{"Error": r.URL.Query().Get("error")})
+}
+
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "filedrop-session")
+	session.Values["authenticated"] = false
+	session.Options.MaxAge = -1
+	session.Save(r, w)
+	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +285,7 @@ func serveFile(w http.ResponseWriter, result *FileDocument) {
 	if result.Hash != "" {
 		hash := sha256.Sum256(finalData)
 		hashString := "sha256:" + hex.EncodeToString(hash[:])
-		if subtle.ConstantTimeCompare([]byte(hashString), []byte(result.Hash)) != 1 {
+		if bytes.Compare([]byte(hashString), []byte(result.Hash)) != 0 {
 			log.Printf("Integrity check failed for file: %s", result.Filename)
 			http.Error(w, "File is corrupt", http.StatusInternalServerError)
 			return
@@ -389,12 +430,10 @@ func serveSharedFileHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Increment download count
 	_, err = fileCollection.UpdateOne(ctx, bson.M{"shareToken": token}, bson.M{"$inc": bson.M{"shareDownloads": 1}})
-    if err != nil {
-        log.Printf("Failed to increment download count for token %s: %v", token, err)
-        // Decide if you should still serve the file. For now, we will.
-    }
+	if err != nil {
+		log.Printf("Failed to increment download count for token %s: %v", token, err)
+	}
 
 	serveFile(w, &result)
 }
@@ -409,9 +448,15 @@ func main() {
 	user = os.Getenv("APP_USER")
 	pass = os.Getenv("APP_PASS")
 	encryptionKeyHex = os.Getenv("ENCRYPTION_KEY")
+	sessionKey = os.Getenv("SESSION_KEY")
+
 	if encryptionKeyHex == "" {
 		log.Fatal("ENCRYPTION_KEY environment variable not set.")
 	}
+	if sessionKey == "" {
+		log.Fatal("SESSION_KEY environment variable not set. Please provide a 32 or 64 byte key.")
+	}
+
 	key, err := hex.DecodeString(encryptionKeyHex)
 	if err != nil {
 		log.Fatalf("Could not decode encryption key: %v", err)
@@ -420,6 +465,15 @@ func main() {
 		log.Fatalf("Encryption key must be 32 bytes (64 hex characters), but got %d bytes", len(key))
 	}
 	encryptionKey = key
+
+	store = sessions.NewCookieStore([]byte(sessionKey))
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   86400 * 7, // 7 days
+		HttpOnly: true,
+		Secure:   os.Getenv("RENDER") == "true",
+	}
+
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
 	if err != nil {
 		log.Fatalf("Could not connect to MongoDB: %v", err)
@@ -429,17 +483,22 @@ func main() {
 	}
 	fileCollection = client.Database(dbName).Collection(collName)
 	log.Println("Successfully connected to MongoDB Atlas!")
+
 	tpl = template.Must(template.ParseGlob("templates/*.html"))
+
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	
-	mux.HandleFunc("/files/", basicAuth(downloadHandler))
-	mux.HandleFunc("/", basicAuth(indexHandler))
-	mux.HandleFunc("/upload", basicAuth(uploadHandler))
-	mux.HandleFunc("/delete/", basicAuth(deleteHandler))
-	mux.HandleFunc("/unshare/", basicAuth(unshareHandler))
-	mux.HandleFunc("/share/", basicAuth(shareHandler))
+	mux.HandleFunc("/login", loginHandler)
+	mux.HandleFunc("/logout", logoutHandler)
 	mux.HandleFunc("/s/", serveSharedFileHandler)
+
+	mux.HandleFunc("/", sessionAuth(indexHandler))
+	mux.HandleFunc("/upload", sessionAuth(uploadHandler))
+	mux.HandleFunc("/files/", sessionAuth(downloadHandler))
+	mux.HandleFunc("/delete/", sessionAuth(deleteHandler))
+	mux.HandleFunc("/share/", sessionAuth(shareHandler))
+	mux.HandleFunc("/unshare/", sessionAuth(unshareHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {
