@@ -1,4 +1,4 @@
-// main.go
+// main.go - FINAL CORRECTED VERSION
 package main
 
 import (
@@ -27,19 +27,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// --- CONFIGURATION ---
 var tpl *template.Template
 var fileCollection *mongo.Collection
 var ctx = context.TODO()
 var encryptionKey []byte
-
-// These will be loaded from .env locally or from the host environment in production.
-var mongoURI = os.Getenv("MONGODB_URI")
-var dbName = os.Getenv("DB_NAME")
-var collName = os.Getenv("COLLECTION_NAME")
-var user = os.Getenv("APP_USER")
-var pass = os.Getenv("APP_PASS")
-var encryptionKeyHex = os.Getenv("ENCRYPTION_KEY")
+var mongoURI, dbName, collName, user, pass, encryptionKeyHex string
 
 type FileDocument struct {
 	Filename    string    `bson:"filename"`
@@ -51,9 +43,6 @@ type FileDocument struct {
 	Encryption  string    `bson:"encryption,omitempty"`
 }
 
-// --- END CONFIGURATION ---
-
-// --- CRYPTO HELPERS ---
 func encrypt(data []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -87,18 +76,13 @@ func decrypt(data []byte, key []byte) ([]byte, error) {
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
-// --- END CRYPTO HELPERS ---
-
-// --- MIDDLEWARE ---
-
-// forceHTTPS is a middleware that redirects HTTP requests to HTTPS.
-// It is "proxy-aware" and respects the 'X-Forwarded-Proto' header set by services like Render.
 func forceHTTPS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		isProd := os.Getenv("RENDER") == "true" // Use Render's specific env var
+		isProd := os.Getenv("RENDER") == "true"
 		if isProd && r.Header.Get("X-Forwarded-Proto") == "http" {
 			targetURL := "https://" + r.Host + r.URL.RequestURI()
-			http.Redirect(w, r, targetURL, http.StatusPermanentRedirect)
+			// Use a TEMPORARY redirect to prevent aggressive browser caching
+			http.Redirect(w, r, targetURL, http.StatusTemporaryRedirect)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -109,9 +93,7 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if ok {
-			userMatch := (subtle.ConstantTimeCompare([]byte(username), []byte(user)) == 1)
-			passMatch := (subtle.ConstantTimeCompare([]byte(password), []byte(pass)) == 1)
-			if userMatch && passMatch {
+			if subtle.ConstantTimeCompare([]byte(username), []byte(user)) == 1 && subtle.ConstantTimeCompare([]byte(password), []byte(pass)) == 1 {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -121,9 +103,6 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
-// --- END MIDDLEWARE ---
-
-// --- HANDLERS ---
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	var results []FileDocument
 	opts := options.Find().SetProjection(bson.M{"filename": 1, "uploadDate": 1, "_id": 0}).SetSort(bson.D{{"uploadDate", -1}})
@@ -133,7 +112,6 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer cursor.Close(ctx)
-
 	if err = cursor.All(ctx, &results); err != nil {
 		http.Error(w, "Could not parse file list", http.StatusInternalServerError)
 		return
@@ -146,7 +124,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "Could not get uploaded file", http.StatusBadRequest)
@@ -170,26 +147,22 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not finalize compression", http.StatusInternalServerError)
 		return
 	}
-	compressedBytes := compressedBuf.Bytes()
-	encryptedBytes, err := encrypt(compressedBytes, encryptionKey)
+	encryptedBytes, err := encrypt(compressedBuf.Bytes(), encryptionKey)
 	if err != nil {
 		log.Printf("Encryption error: %v", err)
 		http.Error(w, "Could not secure file", http.StatusInternalServerError)
 		return
 	}
-	encodedData := base64.StdEncoding.EncodeToString(encryptedBytes)
-	filename := filepath.Base(header.Filename)
 	newFile := FileDocument{
-		Filename:    filename,
+		Filename:    filepath.Base(header.Filename),
 		ContentType: http.DetectContentType(originalBytes),
 		UploadDate:  time.Now(),
-		Data:        encodedData,
+		Data:        base64.StdEncoding.EncodeToString(encryptedBytes),
 		Hash:        "sha256:" + hashString,
 		Compression: "gzip",
 		Encryption:  "aes-gcm",
 	}
-	_, err = fileCollection.InsertOne(ctx, newFile)
-	if err != nil {
+	if _, err := fileCollection.InsertOne(ctx, newFile); err != nil {
 		log.Printf("Error inserting document: %v", err)
 		http.Error(w, "Could not save file to database", http.StatusInternalServerError)
 		return
@@ -200,13 +173,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	filename := filepath.Base(r.URL.Path)
 	var result FileDocument
-
 	err := fileCollection.FindOne(ctx, bson.M{"filename": filename}).Decode(&result)
-	if err == mongo.ErrNoDocuments {
-		http.NotFound(w, r)
-		return
-	} else if err != nil {
-		http.Error(w, "Could not retrieve file", http.StatusInternalServerError)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Could not retrieve file", http.StatusInternalServerError)
+		}
 		return
 	}
 	decodedData, err := base64.StdEncoding.DecodeString(result.Data)
@@ -263,27 +236,22 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filename := filepath.Base(r.URL.Path)
-	_, err := fileCollection.DeleteOne(ctx, bson.M{"filename": filename})
-	if err != nil {
+	if _, err := fileCollection.DeleteOne(ctx, bson.M{"filename": filename}); err != nil {
 		log.Printf("Error deleting document: %v", err)
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// --- END HANDLERS ---
-
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, relying on host environment variables.")
 	}
-
 	mongoURI = os.Getenv("MONGODB_URI")
 	dbName = os.Getenv("DB_NAME")
 	collName = os.Getenv("COLLECTION_NAME")
 	user = os.Getenv("APP_USER")
 	pass = os.Getenv("APP_PASS")
 	encryptionKeyHex = os.Getenv("ENCRYPTION_KEY")
-
 	if encryptionKeyHex == "" {
 		log.Fatal("ENCRYPTION_KEY environment variable not set.")
 	}
@@ -295,41 +263,26 @@ func main() {
 		log.Fatalf("Encryption key must be 32 bytes (64 hex characters), but got %d bytes", len(key))
 	}
 	encryptionKey = key
-
-	clientOptions := options.Client().ApplyURI(mongoURI)
-	client, err := mongo.Connect(ctx, clientOptions)
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
 	if err != nil {
 		log.Fatalf("Could not connect to MongoDB: %v", err)
 	}
-	err = client.Ping(ctx, nil)
-	if err != nil {
+	if err = client.Ping(ctx, nil); err != nil {
 		log.Fatalf("Could not ping MongoDB: %v", err)
 	}
 	fileCollection = client.Database(dbName).Collection(collName)
 	log.Println("Successfully connected to MongoDB Atlas!")
-
 	tpl = template.Must(template.ParseGlob("templates/*.html"))
-
-	// **CHANGE**: Create an explicit router (mux)
 	mux := http.NewServeMux()
-
-	staticFileServer := http.FileServer(http.Dir("static"))
-	// **CHANGE**: Register handlers on the new mux, not the global http
-	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	mux.HandleFunc("/files/", basicAuth(downloadHandler))
 	mux.HandleFunc("/", basicAuth(indexHandler))
 	mux.HandleFunc("/upload", basicAuth(uploadHandler))
 	mux.HandleFunc("/delete/", basicAuth(deleteHandler))
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-
-	// **CHANGE**: Wrap the new mux with the middleware
-	handler := forceHTTPS(mux)
-
 	log.Printf("Server starting on http://localhost:%s\n", port)
-	// **CHANGE**: Use the final wrapped handler
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	log.Fatal(http.ListenAndServe(":"+port, forceHTTPS(mux)))
 }
