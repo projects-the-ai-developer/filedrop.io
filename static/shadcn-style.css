@@ -1,5 +1,9 @@
 /* static/shadcn-style.css */
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 :root {
     --background: hsl(240 10% 3.9%);
     --foreground: hsl(0 0% 98%);
@@ -24,7 +28,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     display: flex;
     justify-content: center;
-    padding-top: 5rem;
+    padding-top: 2rem;
     margin: 0;
 }
 
@@ -64,7 +68,9 @@ main {
     cursor: pointer;
     transition: opacity 0.2s;
     white-space: nowrap;
-    height: 2.5rem; /* Added for consistent height */
+    height: 3rem;
+    min-width: 6rem;
+    vertical-align: middle;
 }
 .btn:hover { opacity: 0.9; }
 
@@ -82,7 +88,7 @@ main {
 }
 
 .input {
-    height: 2.5rem;
+    height: 3rem;
     width: 100%;
     border-radius: var(--radius);
     border: 1px solid var(--input);
@@ -90,7 +96,7 @@ main {
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     color: var(--foreground);
-    box-sizing: border-box;
+    vertical-align: middle;
 }
 
 /* Hide number input spinners */
@@ -103,16 +109,24 @@ input[type=number] {
   -moz-appearance: textfield;
 }
 
+.upload-form .input[type="file"] {
+    height: 3rem;
+    line-height: 1.8; /* Adjust for vertical centering of text */
+}
+
 .input[type="file"]::file-selector-button {
     background-color: var(--primary);
     color: var(--primary-foreground);
     border: none;
-    border-radius: calc(var(--radius) - 1px);
+    border-radius: var(--radius);
     padding: 0.5rem 1rem;
+    margin: -0.5rem -0.75rem; /* Negative margin to fill the space */
     margin-right: 0.75rem;
     cursor: pointer;
     transition: opacity 0.2s;
-    height: 100%;
+    height: calc(3rem - 2px); /* Adjust for border */
+    font-weight: 500;
+    font-size: 0.875rem;
     -webkit-appearance: none;
     appearance: none;
 }
@@ -129,6 +143,7 @@ input[type=number] {
 .table th, .table td {
     padding: 1rem;
     border-bottom: 1px solid var(--border);
+    vertical-align: middle;
 }
 .table td.filename-cell {
     word-break: break-word;
@@ -159,6 +174,13 @@ a:hover { text-decoration: underline; }
     gap: 1rem;
 }
 
+.share-link-display {
+    font-size: 0.8rem;
+    line-height: 1;
+    margin-top: 0.5rem;
+    color: var(--muted-foreground);
+}
+
 .table-wrapper {
     overflow-x: auto;
 }
@@ -167,6 +189,9 @@ a:hover { text-decoration: underline; }
     display: flex;
     gap: 0.5rem;
     justify-content: flex-end;
+}
+.actions-container form {
+    margin: 0;
 }
 
 @media (min-width: 640px) {
@@ -178,6 +203,9 @@ a:hover { text-decoration: underline; }
     }
     .share-form-inputs {
         flex-direction: row;
+    }
+    .share-form-inputs .input {
+        flex-grow: 1;
     }
 }
 
@@ -202,11 +230,12 @@ a:hover { text-decoration: underline; }
     .table tr {
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
     }
     .table td {
         display: flex;
         justify-content: space-between;
+        align-items: center;
         padding: 0.75rem 1rem;
         border-bottom: 1px solid var(--border);
         text-align: right;
@@ -221,23 +250,35 @@ a:hover { text-decoration: underline; }
         color: var(--muted-foreground);
         margin-right: 1rem;
     }
+    .table td.filename-cell {
+        align-items: flex-start;
+        flex-direction: column;
+    }
     .table td.filename-cell a {
-        word-break: break-all;
+        font-size: 0.9rem;
+    }
+    .table td.filename-cell::before {
+        display: none;
     }
     .table td.actions-cell {
         justify-content: flex-end;
-        gap: 1rem;
-        flex-wrap: wrap;
     }
     .table td.actions-cell::before {
         display: none;
     }
     .actions-container {
+        display: flex;
         width: 100%;
-        gap: 1rem;
+        gap: 0.5rem;
     }
     .actions-container > * {
         flex-grow: 1;
+    }
+    .actions-container .btn {
+        width: 100%;
+    }
+    .upload-form .input, .upload-form .btn {
+        width: 100%;
     }
     .share-form-inputs {
         flex-direction: column;
