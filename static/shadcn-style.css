@@ -92,6 +92,16 @@ main {
     box-sizing: border-box;
 }
 
+/* Hide number input spinners */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
 .input[type="file"]::file-selector-button {
     background-color: var(--primary);
     color: var(--primary-foreground);
@@ -209,7 +219,8 @@ a:hover { text-decoration: underline; }
     }
     .table td.actions-cell {
         justify-content: flex-end;
-        gap: 0.5rem;
+        gap: 1rem;
+        flex-wrap: wrap;
     }
     .table td.actions-cell::before {
         display: none;
