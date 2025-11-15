@@ -26,9 +26,6 @@ body {
     background-color: var(--background);
     color: var(--foreground);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    display: flex;
-    justify-content: center;
-    padding-top: 2rem;
     margin: 0;
 }
 
@@ -36,6 +33,12 @@ main {
     width: 100%;
     max-width: 800px;
     padding: 1rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.auth-container {
+    padding-top: 20vh;
 }
 
 .card {
