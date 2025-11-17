@@ -24,7 +24,7 @@ Thumbs.db
 
 # Backup files
 *.bak
-
+main_gridfs_test.go
 # Docker
 docker-compose.yml
 docker-compose.*.yml
