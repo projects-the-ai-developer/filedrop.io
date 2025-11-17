@@ -505,5 +505,6 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("Server starting on http://localhost:%s\n", port)
+	StartSftpServer()
 	log.Fatal(http.ListenAndServe(":"+port, forceHTTPS(mux)))
 }
